@@ -150,6 +150,10 @@ stock_b2b = {}   # sku → int
 stock_b2c = {}
 inv_meta  = {}   # sku → {product_name, variant_title, launch_type}
 
+inv_hdr = [h.strip().lower() for h in inv_rows[0]] if inv_rows else []
+inv_cat_i = next((inv_hdr.index(c) for c in ("category",) if c in inv_hdr), None)
+inv_sub_i = next((inv_hdr.index(c) for c in ("sub-category", "sub category", "subcategory") if c in inv_hdr), None)
+
 for row in inv_rows[1:]:
     if len(row) < 44: continue
     sku = row[1].strip()   # col B = ERP Codes New MRP
@@ -160,6 +164,8 @@ for row in inv_rows[1:]:
         "product_name":  row[3].strip()  if len(row) > 3  else "",   # col D
         "variant_title": row[4].strip()  if len(row) > 4  else "",   # col E
         "launch_type":   row[14].strip() if len(row) > 14 else "",   # col O
+        "cat": row[inv_cat_i].strip() if inv_cat_i and len(row) > inv_cat_i else "",
+        "sub": row[inv_sub_i].strip() if inv_sub_i and len(row) > inv_sub_i else "",
     }
 
 print(f"  Inventory SKUs: {len(stock_b2b)}")
@@ -247,8 +253,8 @@ def build_rows(qty_map, stock_map, rev_map):
             im.get("product_name", ""),
             im.get("variant_title", ""),
             m.get("brand", ""),
-            m.get("cat", ""),
-            m.get("sub", ""),
+            m.get("cat", "") or im.get("cat", ""),
+            m.get("sub", "") or im.get("sub", ""),
             im.get("launch_type", ""),
             sold,
             int(stock),
