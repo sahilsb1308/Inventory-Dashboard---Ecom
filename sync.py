@@ -186,14 +186,16 @@ r_sku_i  = rev_hdr.index("common sku")
 r_mrp_i  = rev_hdr.index("mrp sale")
 r_mon_i  = rev_hdr.index("month")
 r_ver_i  = rev_hdr.index("vertical")
+r_prd_i  = rev_hdr.index("parent product") if "parent product" in rev_hdr else None
 
 valid_months = {
     m for m in {r[r_mon_i].strip() for r in rev_rows[1:] if len(r) > r_mon_i}
     if (d := parse_month(m)) and d >= datetime(REVENUE_FROM.year, REVENUE_FROM.month, 1)
 }
 
-b2b_rev = defaultdict(float)
-b2c_rev = defaultdict(float)
+b2b_rev  = defaultdict(float)
+b2c_rev  = defaultdict(float)
+rev_prod = {}   # sku → product name from "parent product" col Q
 
 for row in rev_rows[1:]:
     if len(row) <= max(r_sku_i, r_mrp_i, r_mon_i, r_ver_i): continue
@@ -205,6 +207,9 @@ for row in rev_rows[1:]:
     if rev is None: continue
     if vert == "B2B":   b2b_rev[sku] += rev
     elif vert == "B2C": b2c_rev[sku] += rev
+    if r_prd_i and sku not in rev_prod and len(row) > r_prd_i:
+        v = row[r_prd_i].strip()
+        if v: rev_prod[sku] = v
 
 print(f"  Revenue months included: {sorted(valid_months)}")
 print(f"  B2B revenue SKUs: {len(b2b_rev)}  |  B2C revenue SKUs: {len(b2c_rev)}")
@@ -254,7 +259,7 @@ def build_rows(qty_map, stock_map, rev_map):
         im    = inv_meta.get(sku, {})
 
         variant      = im.get("variant_title", "")  or m.get("variant", "")
-        product_name = im.get("product_name", "")   or m.get("product_name", "")
+        product_name = im.get("product_name", "")   or rev_prod.get(sku, "") or m.get("product_name", "")
 
         rows.append([
             sku,
