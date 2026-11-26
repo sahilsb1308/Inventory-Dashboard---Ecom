@@ -316,7 +316,6 @@ def write_tab(tab_name, qty_map, stock_map, rev_map):
     # Alternating row banding — single API call instead of one per row
     reqs.append({"addBanding": {
         "bandedRange": {
-            "bandedRangeId": sheet_id * 10 + 1,
             "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": n_data + 1,
                        "startColumnIndex": 0, "endColumnIndex": n_cols},
             "rowProperties": {
