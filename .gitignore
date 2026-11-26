@@ -1,0 +1,9 @@
+# Service account key — never commit
+*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.env
+venv/
+.venv/
