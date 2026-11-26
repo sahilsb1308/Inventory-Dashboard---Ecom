@@ -24,7 +24,13 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Write service account key
-        run: echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' > inventory-dashboard-ecommerce-a460b764a150.json
+        env:
+          GCP_KEY: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+        run: |
+          if [ -z "$GCP_KEY" ]; then
+            echo "ERROR: GCP_SERVICE_ACCOUNT_KEY secret is not set" && exit 1
+          fi
+          printf '%s' "$GCP_KEY" > inventory-dashboard-ecommerce-a460b764a150.json
 
       - name: Run sync
         run: python3 sync.py
