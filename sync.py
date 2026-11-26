@@ -111,11 +111,13 @@ src_hdr = [h.strip().lower() for h in src_all[1]]   # row 2 = header
 sku_i  = src_hdr.index("ims code")
 qty_i  = src_hdr.index("units sold") if "units sold" in src_hdr else src_hdr.index("qty")
 vert_i = src_hdr.index("vertical")
-ean_i  = src_hdr.index("ean code") if "ean code" in src_hdr else None
-brd_i  = src_hdr.index("brand")    if "brand"    in src_hdr else None
-cat_i  = src_hdr.index("category") if "category" in src_hdr else None
+ean_i  = src_hdr.index("ean code")      if "ean code"      in src_hdr else None
+brd_i  = src_hdr.index("brand")        if "brand"        in src_hdr else None
+cat_i  = src_hdr.index("category")     if "category"     in src_hdr else None
 sub_i  = src_hdr.index("sub-category") if "sub-category" in src_hdr else (
          src_hdr.index("sub category")  if "sub category"  in src_hdr else None)
+var_i  = src_hdr.index("variant title") if "variant title" in src_hdr else (
+         src_hdr.index("variant")        if "variant"        in src_hdr else None)
 
 b2b_qty = defaultdict(int)
 b2c_qty = defaultdict(int)
@@ -133,10 +135,11 @@ for row in src_all[2:]:
     elif vert == "B2C": b2c_qty[ims] += q
     if ims not in meta:
         meta[ims] = {
-            "ean":  row[ean_i].strip() if ean_i and len(row) > ean_i else "",
-            "brand": row[brd_i].strip() if brd_i and len(row) > brd_i else "",
-            "cat":   row[cat_i].strip() if cat_i and len(row) > cat_i else "",
-            "sub":   row[sub_i].strip() if sub_i and len(row) > sub_i else "",
+            "ean":     row[ean_i].strip() if ean_i and len(row) > ean_i else "",
+            "brand":   row[brd_i].strip() if brd_i and len(row) > brd_i else "",
+            "cat":     row[cat_i].strip() if cat_i and len(row) > cat_i else "",
+            "sub":     row[sub_i].strip() if sub_i and len(row) > sub_i else "",
+            "variant": row[var_i].strip() if var_i and len(row) > var_i else "",
         }
 
 print(f"  B2B SKUs: {len(b2b_qty)}  |  B2C SKUs: {len(b2c_qty)}")
@@ -247,11 +250,13 @@ def build_rows(qty_map, stock_map, rev_map):
         m     = meta.get(sku, {})
         im    = inv_meta.get(sku, {})
 
+        variant = im.get("variant_title", "") or m.get("variant", "")
+
         rows.append([
             sku,
             m.get("ean", ""),
             im.get("product_name", ""),
-            im.get("variant_title", ""),
+            variant,
             m.get("brand", ""),
             m.get("cat", "") or im.get("cat", ""),
             m.get("sub", "") or im.get("sub", ""),
@@ -420,6 +425,22 @@ def write_tab(tab_name, qty_map, stock_map, rev_map):
     counts = Counter(row[pri_i] for row in data_rows)
     print(f"  {tab_name}: {n_data} rows written")
     print(f"  Priority: P0={counts['P0']} P1={counts['P1']} P2={counts['P2']} P3={counts['P3']}")
+
+    # Sanity check: read back row 2 and validate key fields
+    if data_rows:
+        r2 = data_rows[0]
+        r2_dict = dict(zip(FINAL_COLS, r2))
+        issues = []
+        if not r2_dict.get("IMS Code"):           issues.append("IMS Code blank")
+        if not r2_dict.get("Product Name"):        issues.append("Product Name blank")
+        if not r2_dict.get("Variant Title"):       issues.append("Variant Title blank")
+        if r2_dict.get("Current Stock", 0) < 0:   issues.append(f"Negative stock: {r2_dict['Current Stock']}")
+        if r2_dict.get("Priority") not in ("P0","P1","P2","P3"): issues.append(f"Bad priority: {r2_dict.get('Priority')}")
+        if issues:
+            print(f"  ⚠ Row-2 sanity FAIL [{tab_name}]: {', '.join(issues)}")
+            print(f"    Row 2 data: {r2_dict}")
+        else:
+            print(f"  ✓ Row-2 sanity OK  [{tab_name}]: SKU={r2_dict['IMS Code']} | Stock={r2_dict['Current Stock']} | Priority={r2_dict['Priority']} | Variant={r2_dict['Variant Title'] or '(none)'}")
 
 write_tab("B2B", b2b_qty, stock_b2b, b2b_rev)
 write_tab("B2C", b2c_qty, stock_b2c, b2c_rev)
