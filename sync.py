@@ -12,6 +12,7 @@ Requires: pip install gspread google-auth
 import warnings
 warnings.filterwarnings("ignore")
 
+import time
 import gspread
 from google.oauth2.service_account import Credentials
 from google.auth.transport.requests import Request as GRequest
@@ -260,17 +261,25 @@ def build_rows(qty_map, stock_map, rev_map):
 # ── 5. Write to destination ───────────────────────────────────────────────────
 dst = gc.open_by_key(DEST_ID)
 
+def _batch(requests, dst, pause=1.5):
+    """Send batchUpdate requests in chunks of 500, with a pause between chunks."""
+    for i in range(0, len(requests), 500):
+        dst.batch_update({"requests": requests[i:i+500]})
+        if i + 500 < len(requests):
+            time.sleep(pause)
+
 def write_tab(tab_name, qty_map, stock_map, rev_map):
     print(f"\nWriting {tab_name}…")
     data_rows, total_rev = build_rows(qty_map, stock_map, rev_map)
     ws = dst.worksheet(tab_name)
     ws.clear()
+    time.sleep(2)
 
     all_rows = [FINAL_COLS] + data_rows
     for i in range(0, len(all_rows), 500):
         ws.update(f"A{i+1}", all_rows[i:i+500], value_input_option="RAW")
+        time.sleep(1.5)
 
-    # Formatting
     sheet_id = ws.id
     n_data   = len(data_rows)
     n_cols   = len(FINAL_COLS)
@@ -281,7 +290,7 @@ def write_tab(tab_name, qty_map, stock_map, rev_map):
 
     reqs = []
 
-    # Header row
+    # Header row formatting
     reqs.append({"repeatCell": {
         "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1,
                    "startColumnIndex": 0, "endColumnIndex": n_cols},
@@ -293,50 +302,21 @@ def write_tab(tab_name, qty_map, stock_map, rev_map):
         "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
     }})
 
-    # Alternating rows
-    for r_idx, row in enumerate(data_rows):
-        bg = ROW_ODD if r_idx % 2 == 0 else ROW_EVEN
-        reqs.append({"repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": r_idx+1, "endRowIndex": r_idx+2,
+    # Alternating row banding — single API call instead of one per row
+    reqs.append({"addBanding": {
+        "bandedRange": {
+            "bandedRangeId": sheet_id * 10 + 1,
+            "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": n_data + 1,
                        "startColumnIndex": 0, "endColumnIndex": n_cols},
-            "cell": {"userEnteredFormat": {
-                "backgroundColor": bg,
-                "textFormat": {"foregroundColor": _rgb(0, 0, 0), "bold": False},
-            }},
-            "fields": "userEnteredFormat(backgroundColor,textFormat)"
-        }})
+            "rowProperties": {
+                "headerColor":      ROW_ODD,
+                "firstBandColor":   ROW_ODD,
+                "secondBandColor":  ROW_EVEN,
+            }
+        }
+    }})
 
-        # Stock Status colour
-        ss_val = row[ss_i]
-        if ss_val in STOCK_COLOURS:
-            c = STOCK_COLOURS[ss_val]
-            reqs.append({"repeatCell": {
-                "range": {"sheetId": sheet_id, "startRowIndex": r_idx+1, "endRowIndex": r_idx+2,
-                           "startColumnIndex": ss_i, "endColumnIndex": ss_i+1},
-                "cell": {"userEnteredFormat": {
-                    "backgroundColor": c["bg"],
-                    "textFormat": {"foregroundColor": c["fg"], "bold": True},
-                    "horizontalAlignment": "CENTER",
-                }},
-                "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)"
-            }})
-
-        # Priority colour
-        p_val = row[pri_i]
-        if p_val in PRIORITY_COLOURS:
-            c = PRIORITY_COLOURS[p_val]
-            reqs.append({"repeatCell": {
-                "range": {"sheetId": sheet_id, "startRowIndex": r_idx+1, "endRowIndex": r_idx+2,
-                           "startColumnIndex": pri_i, "endColumnIndex": pri_i+1},
-                "cell": {"userEnteredFormat": {
-                    "backgroundColor": c["bg"],
-                    "textFormat": {"foregroundColor": c["fg"], "bold": True},
-                    "horizontalAlignment": "CENTER",
-                }},
-                "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)"
-            }})
-
-    # Number formats
+    # Number formats (range-level — 2 calls total)
     reqs.append({"repeatCell": {
         "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": n_data+1,
                    "startColumnIndex": rev_ci, "endColumnIndex": rev_ci+1},
@@ -350,14 +330,64 @@ def write_tab(tab_name, qty_map, stock_map, rev_map):
         "fields": "userEnteredFormat.numberFormat"
     }})
 
-    # Freeze header row
+    # Freeze header
     reqs.append({"updateSheetProperties": {
         "properties": {"sheetId": sheet_id, "gridProperties": {"frozenRowCount": 1}},
         "fields": "gridProperties.frozenRowCount"
     }})
 
-    for i in range(0, len(reqs), 200):
-        dst.batch_update({"requests": reqs[i:i+200]})
+    _batch(reqs, dst)
+    time.sleep(2)
+
+    # Stock Status colours — group consecutive rows with same status to cut calls
+    ss_reqs = []
+    for r_idx, row in enumerate(data_rows):
+        ss_val = row[ss_i]
+        if ss_val in STOCK_COLOURS:
+            c = STOCK_COLOURS[ss_val]
+            # Merge with previous request if same status and adjacent row
+            if (ss_reqs and
+                ss_reqs[-1]["repeatCell"]["cell"]["userEnteredFormat"]["backgroundColor"] == c["bg"] and
+                ss_reqs[-1]["repeatCell"]["range"]["endRowIndex"] == r_idx + 1):
+                ss_reqs[-1]["repeatCell"]["range"]["endRowIndex"] = r_idx + 2
+            else:
+                ss_reqs.append({"repeatCell": {
+                    "range": {"sheetId": sheet_id, "startRowIndex": r_idx+1, "endRowIndex": r_idx+2,
+                               "startColumnIndex": ss_i, "endColumnIndex": ss_i+1},
+                    "cell": {"userEnteredFormat": {
+                        "backgroundColor": c["bg"],
+                        "textFormat": {"foregroundColor": c["fg"], "bold": True},
+                        "horizontalAlignment": "CENTER",
+                    }},
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)"
+                }})
+
+    _batch(ss_reqs, dst)
+    time.sleep(2)
+
+    # Priority colours — same merge trick
+    pri_reqs = []
+    for r_idx, row in enumerate(data_rows):
+        p_val = row[pri_i]
+        if p_val in PRIORITY_COLOURS:
+            c = PRIORITY_COLOURS[p_val]
+            if (pri_reqs and
+                pri_reqs[-1]["repeatCell"]["cell"]["userEnteredFormat"]["backgroundColor"] == c["bg"] and
+                pri_reqs[-1]["repeatCell"]["range"]["endRowIndex"] == r_idx + 1):
+                pri_reqs[-1]["repeatCell"]["range"]["endRowIndex"] = r_idx + 2
+            else:
+                pri_reqs.append({"repeatCell": {
+                    "range": {"sheetId": sheet_id, "startRowIndex": r_idx+1, "endRowIndex": r_idx+2,
+                               "startColumnIndex": pri_i, "endColumnIndex": pri_i+1},
+                    "cell": {"userEnteredFormat": {
+                        "backgroundColor": c["bg"],
+                        "textFormat": {"foregroundColor": c["fg"], "bold": True},
+                        "horizontalAlignment": "CENTER",
+                    }},
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)"
+                }})
+
+    _batch(pri_reqs, dst)
 
     counts = Counter(row[pri_i] for row in data_rows)
     print(f"  {tab_name}: {n_data} rows written")
