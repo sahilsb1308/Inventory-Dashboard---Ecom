@@ -1,0 +1,34 @@
+name: Daily Inventory Sync
+
+on:
+  schedule:
+    - cron: "30 6 * * *"   # 06:30 UTC = 12:00 noon IST every day
+  workflow_dispatch:        # allow manual trigger from GitHub UI
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write service account key
+        run: echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' > inventory-dashboard-ecommerce-a460b764a150.json
+
+      - name: Run sync
+        run: python3 sync.py
+
+      - name: Clean up key
+        if: always()
+        run: rm -f inventory-dashboard-ecommerce-a460b764a150.json

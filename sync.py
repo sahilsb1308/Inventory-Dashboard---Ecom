@@ -25,9 +25,9 @@ INV_ID    = "1daV5kSvAf19z0LqZ9PKT2Vbae5rhULmi8qcNUEqAL4I"    # inventory / stoc
 SALES_ID  = "1Lf5WP1WhznatZjs2fLYzFvZmR4KdyUcnJogf_deE_7U"    # secondary sale (revenue)
 DEST_ID   = "1ZP1hJXGrRYsm70J6zBwzCLfv2kVpS1VRoCSb4Wh_tYk"   # destination dashboard
 
-MTD_DAYS     = 26          # days elapsed in current month
-REVENUE_DAYS = 90          # rolling window for revenue
-TODAY        = datetime(2026, 11, 26)
+REVENUE_DAYS = 90          # rolling revenue window
+TODAY        = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+MTD_DAYS     = TODAY.day   # days elapsed so far this month
 REVENUE_FROM = TODAY - timedelta(days=REVENUE_DAYS)
 
 # Priority cumulative revenue bands
