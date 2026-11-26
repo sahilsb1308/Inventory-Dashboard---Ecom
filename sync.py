@@ -302,6 +302,17 @@ def write_tab(tab_name, qty_map, stock_map, rev_map):
         "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
     }})
 
+    # Remove any existing banding on this sheet before adding a new one
+    sheet_info = dst.client.request(
+        "get",
+        f"https://sheets.googleapis.com/v4/spreadsheets/{DEST_ID}",
+        params={"fields": "sheets(properties.sheetId,bandedRanges)"}
+    ).json()
+    for s in sheet_info.get("sheets", []):
+        if s.get("properties", {}).get("sheetId") == sheet_id:
+            for br in s.get("bandedRanges", []):
+                reqs.insert(0, {"deleteBanding": {"bandedRangeId": br["bandedRangeId"]}})
+
     # Alternating row banding — single API call instead of one per row
     reqs.append({"addBanding": {
         "bandedRange": {
