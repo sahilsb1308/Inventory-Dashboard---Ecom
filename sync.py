@@ -118,6 +118,8 @@ sub_i  = src_hdr.index("sub-category") if "sub-category" in src_hdr else (
          src_hdr.index("sub category")  if "sub category"  in src_hdr else None)
 var_i  = src_hdr.index("variant title") if "variant title" in src_hdr else (
          src_hdr.index("variant")        if "variant"        in src_hdr else None)
+prd_i  = src_hdr.index("product name")  if "product name"  in src_hdr else (
+         src_hdr.index("product")        if "product"        in src_hdr else None)
 
 b2b_qty = defaultdict(int)
 b2c_qty = defaultdict(int)
@@ -139,7 +141,8 @@ for row in src_all[2:]:
             "brand":   row[brd_i].strip() if brd_i and len(row) > brd_i else "",
             "cat":     row[cat_i].strip() if cat_i and len(row) > cat_i else "",
             "sub":     row[sub_i].strip() if sub_i and len(row) > sub_i else "",
-            "variant": row[var_i].strip() if var_i and len(row) > var_i else "",
+            "variant":      row[var_i].strip() if var_i and len(row) > var_i else "",
+            "product_name": row[prd_i].strip() if prd_i and len(row) > prd_i else "",
         }
 
 print(f"  B2B SKUs: {len(b2b_qty)}  |  B2C SKUs: {len(b2c_qty)}")
@@ -250,12 +253,13 @@ def build_rows(qty_map, stock_map, rev_map):
         m     = meta.get(sku, {})
         im    = inv_meta.get(sku, {})
 
-        variant = im.get("variant_title", "") or m.get("variant", "")
+        variant      = im.get("variant_title", "")  or m.get("variant", "")
+        product_name = im.get("product_name", "")   or m.get("product_name", "")
 
         rows.append([
             sku,
             m.get("ean", ""),
-            im.get("product_name", ""),
+            product_name,
             variant,
             m.get("brand", ""),
             m.get("cat", "") or im.get("cat", ""),
