@@ -12,7 +12,11 @@ Requires: pip install gspread google-auth
 import warnings
 warnings.filterwarnings("ignore")
 
+import os
 import time
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import gspread
 from google.oauth2.service_account import Credentials
 from google.auth.transport.requests import Request as GRequest
@@ -302,16 +306,24 @@ def write_tab(tab_name, qty_map, stock_map, rev_map):
         "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
     }})
 
-    # Remove any existing banding on this sheet before adding a new one
+    # Remove any existing banding — fetch IDs and delete via raw HTTP to avoid int32 overflow
     sheet_info = dst.client.request(
         "get",
         f"https://sheets.googleapis.com/v4/spreadsheets/{DEST_ID}",
         params={"fields": "sheets(properties.sheetId,bandedRanges)"}
     ).json()
+    del_reqs = []
     for s in sheet_info.get("sheets", []):
         if s.get("properties", {}).get("sheetId") == sheet_id:
             for br in s.get("bandedRanges", []):
-                reqs.insert(0, {"deleteBanding": {"bandedRangeId": br["bandedRangeId"]}})
+                br_id = br["bandedRangeId"]
+                # Send each deleteBanding separately via raw HTTP to handle IDs > int32 max
+                dst.client.request(
+                    "post",
+                    f"https://sheets.googleapis.com/v4/spreadsheets/{DEST_ID}:batchUpdate",
+                    json={"requests": [{"deleteBanding": {"bandedRangeId": br_id}}]}
+                )
+                time.sleep(0.5)
 
     # Alternating row banding — single API call instead of one per row
     reqs.append({"addBanding": {
