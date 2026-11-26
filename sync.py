@@ -302,6 +302,7 @@ def write_tab(tab_name, qty_map, stock_map, rev_map):
     pri_i    = FINAL_COLS.index("Priority")
     rev_ci   = FINAL_COLS.index("Revenue (Last 90D)")
     pct_ci   = FINAL_COLS.index("Revenue Contribution %")
+    doc_ci   = FINAL_COLS.index("Days of Cover")
 
     reqs = []
 
@@ -349,7 +350,13 @@ def write_tab(tab_name, qty_map, stock_map, rev_map):
         }
     }})
 
-    # Number formats (range-level — 2 calls total)
+    # Number formats (range-level)
+    reqs.append({"repeatCell": {
+        "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": n_data+1,
+                   "startColumnIndex": doc_ci, "endColumnIndex": doc_ci+1},
+        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}},
+        "fields": "userEnteredFormat.numberFormat"
+    }})
     reqs.append({"repeatCell": {
         "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": n_data+1,
                    "startColumnIndex": rev_ci, "endColumnIndex": rev_ci+1},
