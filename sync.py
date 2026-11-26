@@ -231,9 +231,9 @@ def build_rows(qty_map, stock_map, rev_map):
     for sku in all_skus:
         sold  = qty_map.get(sku, 0)
         stock = stock_map.get(sku, 0)
-        drr   = round(sold / MTD_DAYS, 2) if sold else 0
-        proj  = round(drr * 30, 0) if drr else 0
-        doc   = round(stock / drr, 1) if drr else None
+        drr   = int(round(sold / MTD_DAYS)) if sold else 0
+        proj  = int(round(drr * 30)) if drr else 0
+        doc   = int(round(stock / drr)) if drr else None
         ss    = stock_status(doc)
         rev   = round(max(0, rev_map.get(sku, 0)), 2)
         pct   = round(rev / total_rev * 100, 2) if total_rev else 0.0
