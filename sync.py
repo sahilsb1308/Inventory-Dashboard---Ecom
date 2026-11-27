@@ -224,6 +224,39 @@ try:
 except Exception as e:
     print(f"  ERP sheet skip: {e}")
 
+# ── 2c. Category / Sub-Category lookup from Copy of ETA Sheet ────────────────
+sku_cat = {}   # sku → {brand, cat, sub}
+try:
+    eta_ws = inv_wb.worksheet("Copy of ETA Sheet  ")   # trailing spaces in sheet name
+except Exception:
+    try:
+        eta_ws = inv_wb.worksheet("Copy of ETA Sheet")
+    except Exception:
+        eta_ws = None
+
+if eta_ws:
+    try:
+        eta_rows = eta_ws.get_all_values()
+        if len(eta_rows) > 2:
+            # Row 3 (index 2) is the real header: Brand, Category, Parent SKU, D365 SKU...
+            eta_hdr = [h.strip().lower() for h in eta_rows[2]]
+            eta_sku_i = next((eta_hdr.index(c) for c in ("d365 sku", "d365sku", "erp code", "sku") if c in eta_hdr), 3)
+            eta_cat_i = eta_hdr.index("category") if "category" in eta_hdr else None
+            eta_brd_i = eta_hdr.index("brand")    if "brand"    in eta_hdr else None
+            eta_sub_i = next((eta_hdr.index(c) for c in ("sub-category", "sub category", "subcategory") if c in eta_hdr), None)
+            for row in eta_rows[3:]:
+                if len(row) <= eta_sku_i: continue
+                sku = row[eta_sku_i].strip()
+                if not sku or is_invalid(sku): continue
+                sku_cat[sku] = {
+                    "brand": row[eta_brd_i].strip() if eta_brd_i and len(row) > eta_brd_i else "",
+                    "cat":   row[eta_cat_i].strip() if eta_cat_i and len(row) > eta_cat_i else "",
+                    "sub":   row[eta_sub_i].strip() if eta_sub_i and len(row) > eta_sub_i else "",
+                }
+        print(f"  ETA category SKUs: {len(sku_cat)}")
+    except Exception as e:
+        print(f"  ETA sheet read error: {e}")
+
 # ── 3. Read revenue (last 90 days, MRP Sale) ──────────────────────────────────
 print("Reading revenue data…")
 rev_ws   = gc.open_by_key(SALES_ID).worksheet("Secondary Sale (25 to 27)")
@@ -236,6 +269,9 @@ r_mon_i  = rev_hdr.index("month")
 r_ver_i  = rev_hdr.index("vertical")
 r_prd_i  = rev_hdr.index("parent product") if "parent product" in rev_hdr else None
 r_qty_i  = next((rev_hdr.index(c) for c in ("units sold", "qty", "quantity", "units") if c in rev_hdr), None)
+r_cat_i  = 22   # col W = Category
+r_sub_i  = 23   # col X = Sub-Category
+rev_cat  = {}   # sku → {cat, sub}
 
 valid_months = {
     m for m in {r[r_mon_i].strip() for r in rev_rows[1:] if len(r) > r_mon_i}
@@ -266,6 +302,11 @@ for row in rev_rows[1:]:
     if r_prd_i and sku not in rev_prod and len(row) > r_prd_i:
         v = row[r_prd_i].strip()
         if v: rev_prod[sku] = v
+    if sku not in rev_cat:
+        cat = row[r_cat_i].strip() if len(row) > r_cat_i else ""
+        sub = row[r_sub_i].strip() if len(row) > r_sub_i else ""
+        if cat or sub:
+            rev_cat[sku] = {"cat": cat, "sub": sub}
 
 print(f"  Revenue months included: {sorted(valid_months)}")
 print(f"  B2B revenue SKUs: {len(b2b_rev)}  |  B2C revenue SKUs: {len(b2c_rev)}")
@@ -318,6 +359,7 @@ def build_rows(qty_map, stock_map, rev_map, qty_90d_map=None):
         p          = pri_map[sku]
         m          = meta.get(sku, {})
         im         = inv_meta.get(sku, {})
+        ec         = sku_cat.get(sku, {})
 
         variant      = im.get("variant_title", "")  or m.get("variant", "")
         product_name = (im.get("product_name", "")
@@ -331,9 +373,9 @@ def build_rows(qty_map, stock_map, rev_map, qty_90d_map=None):
             m.get("ean", ""),
             product_name,
             variant,
-            m.get("brand", ""),
-            m.get("cat", "") or im.get("cat", ""),
-            m.get("sub", "") or im.get("sub", ""),
+            m.get("brand", "") or ec.get("brand", ""),
+            rev_cat.get(sku, {}).get("cat", "") or m.get("cat", "") or im.get("cat", "") or ec.get("cat", ""),
+            rev_cat.get(sku, {}).get("sub", "") or m.get("sub", "") or im.get("sub", "") or ec.get("sub", ""),
             im.get("launch_type", ""),
             int(sold_90d),
             int(stock),
@@ -457,6 +499,29 @@ def write_tab(tab_name, qty_map, stock_map, rev_map, qty_90d_map=None):
         "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0.00\"%\""}}},
         "fields": "userEnteredFormat.numberFormat"
     }})
+
+    # Revenue Contribution % — blue bold text
+    reqs.append({"repeatCell": {
+        "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": n_data+1,
+                   "startColumnIndex": pct_ci, "endColumnIndex": pct_ci+1},
+        "cell": {"userEnteredFormat": {"textFormat": {"foregroundColor": _rgb(0.07, 0.36, 0.73), "bold": True}}},
+        "fields": "userEnteredFormat.textFormat"
+    }})
+
+    # Days of Cover — colored text per status band
+    doc_ci_local = FINAL_COLS.index("Days of Cover")
+    for r_idx, row in enumerate(data_rows):
+        ss_val = row[ss_i]
+        if ss_val in STOCK_COLOURS:
+            fg = STOCK_COLOURS[ss_val]["fg"] if ss_val in ("Critical", "Low") else STOCK_COLOURS[ss_val]["bg"]
+            # Use the status border color as text color for DOC
+            doc_fg = STOCK_COLOURS[ss_val]["bg"]
+            reqs.append({"repeatCell": {
+                "range": {"sheetId": sheet_id, "startRowIndex": r_idx+1, "endRowIndex": r_idx+2,
+                           "startColumnIndex": doc_ci_local, "endColumnIndex": doc_ci_local+1},
+                "cell": {"userEnteredFormat": {"textFormat": {"foregroundColor": doc_fg, "bold": True}}},
+                "fields": "userEnteredFormat.textFormat"
+            }})
 
     # Freeze header
     reqs.append({"updateSheetProperties": {
