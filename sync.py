@@ -357,9 +357,10 @@ def build_rows(qty_map, stock_map, rev_map, qty_90d_map=None):
         else:
             sold_90d = int(round(sold_mtd / MTD_DAYS * 90)) if MTD_DAYS else sold_mtd
         stock      = stock_map.get(sku, 0)
-        drr        = round(sold_90d / 90, 2) if sold_90d else 0
-        proj       = int(round(drr * 60)) if drr else 0
-        doc        = int(round(stock / drr)) if drr else None
+        _drr_raw   = sold_90d / 90 if sold_90d else 0
+        drr        = round(_drr_raw, 1)              # 1 decimal in sheet
+        proj       = int(round(_drr_raw * 60)) if _drr_raw else 0
+        doc        = int(round(stock / _drr_raw)) if _drr_raw else None
         ss         = stock_status(doc)
         rev        = round(max(0, rev_map.get(sku, 0)), 2)
         pct        = round(rev / total_rev * 100, 2) if total_rev else 0.0
