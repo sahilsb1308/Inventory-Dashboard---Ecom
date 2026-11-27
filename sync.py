@@ -259,7 +259,10 @@ def build_rows(qty_map, stock_map, rev_map):
         im    = inv_meta.get(sku, {})
 
         variant      = im.get("variant_title", "")  or m.get("variant", "")
-        product_name = im.get("product_name", "")   or rev_prod.get(sku, "") or m.get("product_name", "")
+        product_name = (im.get("product_name", "")
+                        or rev_prod.get(sku, "")
+                        or m.get("product_name", "")
+                        or im.get("variant_title", ""))   # last resort: variant title from inventory sheet
 
         rows.append([
             sku,
