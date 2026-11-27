@@ -170,7 +170,9 @@ for row in inv_rows[1:]:
     if len(row) < 2: continue
     sku_a = row[0].strip()  # col A = ERP Codes OLD MRP (matches revenue data)
     sku_b = row[1].strip()  # col B = ERP Codes NEW MRP
-    # Read stock / meta once, then store under both SKU variants
+    ean_a = row[5].strip() if len(row) > 5 else ""   # col F = Old EAN
+    ean_b = row[6].strip() if len(row) > 6 else ""   # col G = New EAN
+    # Read stock / meta once, then store under all identifier variants
     _b2b = (safe_float(row[27], floor=0) or 0) if len(row) > 27 else 0
     _b2c = (safe_float(row[43], floor=0) or 0) if len(row) > 43 else 0
     _meta = {
@@ -181,11 +183,11 @@ for row in inv_rows[1:]:
         "cat": row[inv_cat_i].strip() if inv_cat_i and len(row) > inv_cat_i else "",
         "sub": row[inv_sub_i].strip() if inv_sub_i and len(row) > inv_sub_i else "",
     }
-    for sku in {sku_a, sku_b}:
-        if not sku or sku.startswith("#") or bool(_DATE_PAT.match(sku)): continue
-        stock_b2b[sku] = _b2b
-        stock_b2c[sku] = _b2c
-        inv_meta[sku]  = _meta
+    for key in {sku_a, sku_b, ean_a, ean_b}:
+        if not key or key.startswith("#") or bool(_DATE_PAT.match(key)): continue
+        stock_b2b[key] = _b2b
+        stock_b2c[key] = _b2c
+        inv_meta[key]  = _meta
 
 print(f"  Inventory SKUs: {len(stock_b2b)}")
 
