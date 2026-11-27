@@ -363,7 +363,7 @@ def build_rows(qty_map, stock_map, rev_map, qty_90d_map=None):
         doc        = int(round(stock / _drr_raw)) if _drr_raw else None
         ss         = stock_status(doc)
         rev        = int(round(max(0, rev_map.get(sku, 0))))
-        pct        = round(rev / total_rev * 100, 1) if total_rev else 0.0
+        pct        = round(rev / total_rev * 100, 2) if total_rev else 0.0
         p          = pri_map[sku]
         m          = meta.get(sku, {})
         im         = inv_meta.get(sku, {})
@@ -519,7 +519,7 @@ def write_tab(tab_name, qty_map, stock_map, rev_map, qty_90d_map=None):
     reqs.append({"repeatCell": {
         "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": _FULL,
                    "startColumnIndex": pct_ci, "endColumnIndex": pct_ci+1},
-        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0.0\"%\""}}},
+        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0.00\"%\""}}},
         "fields": "userEnteredFormat.numberFormat"
     }})
 
