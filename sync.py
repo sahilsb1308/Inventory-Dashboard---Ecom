@@ -167,11 +167,12 @@ inv_cat_i = next((inv_hdr.index(c) for c in ("category",) if c in inv_hdr), None
 inv_sub_i = next((inv_hdr.index(c) for c in ("sub-category", "sub category", "subcategory") if c in inv_hdr), None)
 
 for row in inv_rows[1:]:
-    if len(row) < 44: continue
+    if len(row) < 2: continue
     sku = row[1].strip()   # col B = ERP Codes New MRP
-    if not sku or sku.startswith("#"): continue
-    stock_b2b[sku] = safe_float(row[27], floor=0) or 0   # col AB (index 27)
-    stock_b2c[sku] = safe_float(row[43], floor=0) or 0   # col AR (index 43)
+    if not sku or sku.startswith("#") or bool(_DATE_PAT.match(sku)): continue
+    # Read stock only when row is long enough for those columns
+    stock_b2b[sku] = (safe_float(row[27], floor=0) or 0) if len(row) > 27 else 0
+    stock_b2c[sku] = (safe_float(row[43], floor=0) or 0) if len(row) > 43 else 0
     inv_meta[sku]  = {
         "product_name":  row[3].strip()  if len(row) > 3  else "",   # col D
         "variant_title": row[4].strip()  if len(row) > 4  else "",   # col E
@@ -181,6 +182,46 @@ for row in inv_rows[1:]:
     }
 
 print(f"  Inventory SKUs: {len(stock_b2b)}")
+
+# ── 2b. Build product-name lookup from Easyecomm + ERP sheets ────────────────
+ecomm_names = {}   # sku → product name
+
+try:
+    inv_wb = gc.open_by_key(INV_ID)
+    # Inventory Report-Easyecomm: col B = SKU, col C = Product Name
+    ee_ws = inv_wb.worksheet("Inventory Report-Easyecomm")
+    ee_rows = ee_ws.get_all_values()
+    if ee_rows:
+        ee_hdr = [h.strip().lower() for h in ee_rows[0]]
+        ee_sku_i = ee_hdr.index("sku") if "sku" in ee_hdr else 1
+        ee_prd_i = next((ee_hdr.index(c) for c in ("product name", "description", "product") if c in ee_hdr), 2)
+        for row in ee_rows[1:]:
+            if len(row) <= max(ee_sku_i, ee_prd_i): continue
+            sku = row[ee_sku_i].strip()
+            name = row[ee_prd_i].strip()
+            if sku and name and sku not in ecomm_names:
+                ecomm_names[sku] = name
+    print(f"  Easyecomm names: {len(ecomm_names)}")
+except Exception as e:
+    print(f"  Easyecomm sheet skip: {e}")
+
+try:
+    # ERP Inventory (Zone Wise): col A = Item No (SKU), col C = Description
+    erp_ws = inv_wb.worksheet("ERP Inventory (Zone Wise)")
+    erp_rows = erp_ws.get_all_values()
+    if erp_rows:
+        erp_hdr = [h.strip().lower() for h in erp_rows[0]]
+        erp_sku_i = next((erp_hdr.index(c) for c in ("item no", "sku", "erp code") if c in erp_hdr), 0)
+        erp_prd_i = next((erp_hdr.index(c) for c in ("description", "product name", "product") if c in erp_hdr), 2)
+        for row in erp_rows[1:]:
+            if len(row) <= max(erp_sku_i, erp_prd_i): continue
+            sku = row[erp_sku_i].strip()
+            name = row[erp_prd_i].strip()
+            if sku and name and sku not in ecomm_names:
+                ecomm_names[sku] = name
+    print(f"  ERP+Easyecomm names total: {len(ecomm_names)}")
+except Exception as e:
+    print(f"  ERP sheet skip: {e}")
 
 # ── 3. Read revenue (last 90 days, MRP Sale) ──────────────────────────────────
 print("Reading revenue data…")
@@ -268,6 +309,7 @@ def build_rows(qty_map, stock_map, rev_map):
         product_name = (im.get("product_name", "")
                         or rev_prod.get(sku, "")
                         or m.get("product_name", "")
+                        or ecomm_names.get(sku, "")       # Easyecomm / ERP description
                         or im.get("variant_title", ""))   # last resort: variant title from inventory sheet
 
         rows.append([
