@@ -177,6 +177,7 @@ for row in inv_rows[1:]:
         "product_name":  row[3].strip()  if len(row) > 3  else "",   # col D
         "variant_title": row[4].strip()  if len(row) > 4  else "",   # col E
         "launch_type":   row[14].strip() if len(row) > 14 else "",   # col O
+        "mother_wh":     row[19].strip() if len(row) > 19 else "",   # col T
         "cat": row[inv_cat_i].strip() if inv_cat_i and len(row) > inv_cat_i else "",
         "sub": row[inv_sub_i].strip() if inv_sub_i and len(row) > inv_sub_i else "",
     }
@@ -234,15 +235,18 @@ r_mrp_i  = rev_hdr.index("mrp sale")
 r_mon_i  = rev_hdr.index("month")
 r_ver_i  = rev_hdr.index("vertical")
 r_prd_i  = rev_hdr.index("parent product") if "parent product" in rev_hdr else None
+r_qty_i  = next((rev_hdr.index(c) for c in ("units sold", "qty", "quantity", "units") if c in rev_hdr), None)
 
 valid_months = {
     m for m in {r[r_mon_i].strip() for r in rev_rows[1:] if len(r) > r_mon_i}
     if (d := parse_month(m)) and d >= datetime(REVENUE_FROM.year, REVENUE_FROM.month, 1)
 }
 
-b2b_rev  = defaultdict(float)
-b2c_rev  = defaultdict(float)
-rev_prod = {}   # sku → product name from "parent product" col Q
+b2b_rev     = defaultdict(float)
+b2c_rev     = defaultdict(float)
+b2b_qty_90d = defaultdict(float)
+b2c_qty_90d = defaultdict(float)
+rev_prod    = {}   # sku → product name from "parent product" col Q
 
 for row in rev_rows[1:]:
     if len(row) <= max(r_sku_i, r_mrp_i, r_mon_i, r_ver_i): continue
@@ -254,6 +258,11 @@ for row in rev_rows[1:]:
     if rev is None: continue
     if vert == "B2B":   b2b_rev[sku] += rev
     elif vert == "B2C": b2c_rev[sku] += rev
+    if r_qty_i and len(row) > r_qty_i:
+        qty = safe_float(row[r_qty_i], floor=0)
+        if qty:
+            if vert == "B2B":   b2b_qty_90d[sku] += qty
+            elif vert == "B2C": b2c_qty_90d[sku] += qty
     if r_prd_i and sku not in rev_prod and len(row) > r_prd_i:
         v = row[r_prd_i].strip()
         if v: rev_prod[sku] = v
@@ -265,12 +274,12 @@ print(f"  B2B revenue SKUs: {len(b2b_rev)}  |  B2C revenue SKUs: {len(b2c_rev)}"
 FINAL_COLS = [
     "IMS Code", "EAN Code", "Product Name", "Variant Title",
     "Brand", "Category", "Sub-Category", "Launch Type",
-    "Units Sold", "Current Stock", "DRR", "Projected Demand (30D)",
+    "Units Sold (90D)", "Current Stock", "Mother WH Stock", "DRR", "Projected Demand (60D)",
     "Days of Cover", "Stock Status",
     "Revenue (Last 90D)", "Revenue Contribution %", "Priority",
 ]
 
-def build_rows(qty_map, stock_map, rev_map):
+def build_rows(qty_map, stock_map, rev_map, qty_90d_map=None):
     all_skus = sorted(set(qty_map) | set(stock_map))
     total_rev = sum(max(0, rev_map.get(s, 0)) for s in all_skus)
 
@@ -293,17 +302,22 @@ def build_rows(qty_map, stock_map, rev_map):
 
     rows = []
     for sku in all_skus:
-        sold  = qty_map.get(sku, 0)
-        stock = stock_map.get(sku, 0)
-        drr   = int(round(sold / MTD_DAYS)) if sold else 0
-        proj  = int(round(drr * 30)) if drr else 0
-        doc   = int(round(stock / drr)) if drr else None
-        ss    = stock_status(doc)
-        rev   = round(max(0, rev_map.get(sku, 0)), 2)
-        pct   = round(rev / total_rev * 100, 2) if total_rev else 0.0
-        p     = pri_map[sku]
-        m     = meta.get(sku, {})
-        im    = inv_meta.get(sku, {})
+        sold_mtd = qty_map.get(sku, 0)
+        # 90D units: use qty_90d_map if available, else extrapolate from MTD
+        if qty_90d_map:
+            sold_90d = qty_90d_map.get(sku, sold_mtd)
+        else:
+            sold_90d = int(round(sold_mtd / MTD_DAYS * 90)) if MTD_DAYS else sold_mtd
+        stock      = stock_map.get(sku, 0)
+        drr        = round(sold_90d / 90, 2) if sold_90d else 0
+        proj       = int(round(drr * 60)) if drr else 0
+        doc        = int(round(stock / drr)) if drr else None
+        ss         = stock_status(doc)
+        rev        = round(max(0, rev_map.get(sku, 0)), 2)
+        pct        = round(rev / total_rev * 100, 2) if total_rev else 0.0
+        p          = pri_map[sku]
+        m          = meta.get(sku, {})
+        im         = inv_meta.get(sku, {})
 
         variant      = im.get("variant_title", "")  or m.get("variant", "")
         product_name = (im.get("product_name", "")
@@ -321,8 +335,9 @@ def build_rows(qty_map, stock_map, rev_map):
             m.get("cat", "") or im.get("cat", ""),
             m.get("sub", "") or im.get("sub", ""),
             im.get("launch_type", ""),
-            sold,
+            int(sold_90d),
             int(stock),
+            safe_float(im.get("mother_wh", ""), floor=0) or "",
             drr,
             int(proj),
             doc if doc is not None else "",
@@ -348,9 +363,9 @@ def _batch(requests, dst, pause=1.5):
         if i + 500 < len(requests):
             time.sleep(pause)
 
-def write_tab(tab_name, qty_map, stock_map, rev_map):
+def write_tab(tab_name, qty_map, stock_map, rev_map, qty_90d_map=None):
     print(f"\nWriting {tab_name}…")
-    data_rows, total_rev = build_rows(qty_map, stock_map, rev_map)
+    data_rows, total_rev = build_rows(qty_map, stock_map, rev_map, qty_90d_map)
     ws = dst.worksheet(tab_name)
     ws.clear()
     time.sleep(2)
@@ -514,7 +529,7 @@ def write_tab(tab_name, qty_map, stock_map, rev_map):
         else:
             print(f"  ✓ Row-2 sanity OK  [{tab_name}]: SKU={r2_dict['IMS Code']} | Stock={r2_dict['Current Stock']} | Priority={r2_dict['Priority']} | Variant={r2_dict['Variant Title'] or '(none)'}")
 
-write_tab("B2B", b2b_qty, stock_b2b, b2b_rev)
-write_tab("B2C", b2c_qty, stock_b2c, b2c_rev)
+write_tab("B2B", b2b_qty, stock_b2b, b2b_rev, b2b_qty_90d if b2b_qty_90d else None)
+write_tab("B2C", b2c_qty, stock_b2c, b2c_rev, b2c_qty_90d if b2c_qty_90d else None)
 
 print("\n✓ Sync complete.")
