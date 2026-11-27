@@ -307,10 +307,10 @@ def build_rows(qty_map, stock_map, rev_map):
 
         variant      = im.get("variant_title", "")  or m.get("variant", "")
         product_name = (im.get("product_name", "")
-                        or rev_prod.get(sku, "")
-                        or m.get("product_name", "")
                         or ecomm_names.get(sku, "")       # Easyecomm / ERP description
-                        or im.get("variant_title", ""))   # last resort: variant title from inventory sheet
+                        or rev_prod.get(sku, "")
+                        or im.get("variant_title", "")
+                        or m.get("product_name", ""))
 
         rows.append([
             sku,
