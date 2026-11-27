@@ -13,6 +13,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import os
+import re
 import time
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -92,9 +93,14 @@ def safe_float(val, floor=None):
     except:
         return None
 
+_DATE_PAT = re.compile(
+    r'^\d{1,2}[-/](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-/]\d{2,4}$',
+    re.IGNORECASE
+)
+
 def is_invalid(val):
     v = str(val).strip()
-    return not v or v.startswith("#")
+    return not v or v.startswith("#") or bool(_DATE_PAT.match(v))
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 print("Authenticating…")
