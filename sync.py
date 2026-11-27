@@ -46,7 +46,7 @@ def _rgb(r, g, b): return {"red": r, "green": g, "blue": b}
 
 STOCK_COLOURS = {
     "Critical":    {"bg": _rgb(0.83, 0.10, 0.10), "fg": _rgb(1, 1, 1)},
-    "Low":         {"bg": _rgb(1.00, 0.95, 0.20), "fg": _rgb(0, 0, 0)},
+    "Low":         {"bg": _rgb(0.72, 0.45, 0.00), "fg": _rgb(1, 1, 1)},
     "Healthy":     {"bg": _rgb(0.18, 0.56, 0.18), "fg": _rgb(1, 1, 1)},
     "Overstocked": {"bg": _rgb(0.07, 0.07, 0.35), "fg": _rgb(1, 1, 1)},
     "Excess":      {"bg": _rgb(0.50, 0.10, 0.70), "fg": _rgb(1, 1, 1)},
