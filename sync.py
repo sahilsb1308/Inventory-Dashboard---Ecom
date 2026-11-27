@@ -386,7 +386,7 @@ def build_rows(qty_map, stock_map, rev_map, qty_90d_map=None):
             im.get("launch_type", ""),
             int(sold_90d),
             int(stock),
-            safe_float(im.get("mother_wh", ""), floor=0) or "",
+            ("" if not im else (safe_float(im.get("mother_wh", ""), floor=0) or 0)),
             drr,
             int(proj),
             doc if doc is not None else "",
