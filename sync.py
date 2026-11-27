@@ -168,12 +168,12 @@ inv_sub_i = next((inv_hdr.index(c) for c in ("sub-category", "sub category", "su
 
 for row in inv_rows[1:]:
     if len(row) < 2: continue
-    sku = row[1].strip()   # col B = ERP Codes New MRP
-    if not sku or sku.startswith("#") or bool(_DATE_PAT.match(sku)): continue
-    # Read stock only when row is long enough for those columns
-    stock_b2b[sku] = (safe_float(row[27], floor=0) or 0) if len(row) > 27 else 0
-    stock_b2c[sku] = (safe_float(row[43], floor=0) or 0) if len(row) > 43 else 0
-    inv_meta[sku]  = {
+    sku_a = row[0].strip()  # col A = ERP Codes OLD MRP (matches revenue data)
+    sku_b = row[1].strip()  # col B = ERP Codes NEW MRP
+    # Read stock / meta once, then store under both SKU variants
+    _b2b = (safe_float(row[27], floor=0) or 0) if len(row) > 27 else 0
+    _b2c = (safe_float(row[43], floor=0) or 0) if len(row) > 43 else 0
+    _meta = {
         "product_name":  row[3].strip()  if len(row) > 3  else "",   # col D
         "variant_title": row[4].strip()  if len(row) > 4  else "",   # col E
         "launch_type":   row[14].strip() if len(row) > 14 else "",   # col O
@@ -181,6 +181,11 @@ for row in inv_rows[1:]:
         "cat": row[inv_cat_i].strip() if inv_cat_i and len(row) > inv_cat_i else "",
         "sub": row[inv_sub_i].strip() if inv_sub_i and len(row) > inv_sub_i else "",
     }
+    for sku in {sku_a, sku_b}:
+        if not sku or sku.startswith("#") or bool(_DATE_PAT.match(sku)): continue
+        stock_b2b[sku] = _b2b
+        stock_b2c[sku] = _b2c
+        inv_meta[sku]  = _meta
 
 print(f"  Inventory SKUs: {len(stock_b2b)}")
 
