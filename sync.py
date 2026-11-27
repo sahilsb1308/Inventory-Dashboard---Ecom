@@ -386,6 +386,14 @@ def write_tab(tab_name, qty_map, stock_map, rev_map, qty_90d_map=None):
 
     reqs = []
 
+    # Unhide all columns so no previously-hidden range masks new layout
+    reqs.append({"updateDimensionProperties": {
+        "range": {"sheetId": sheet_id, "dimension": "COLUMNS",
+                  "startIndex": 0, "endIndex": n_cols},
+        "properties": {"hiddenByUser": False},
+        "fields": "hiddenByUser"
+    }})
+
     # Header row formatting
     reqs.append({"repeatCell": {
         "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1,
