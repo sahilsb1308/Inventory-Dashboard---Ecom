@@ -489,22 +489,36 @@ def write_tab(tab_name, qty_map, stock_map, rev_map, qty_90d_map=None):
     }})
 
     # Number formats (range-level)
+    # Integer columns — no decimals, comma thousands separator
+    for _col_name in ("Units Sold (90D)", "Current Stock", "Mother WH Stock",
+                      "Projected Demand (60D)", "Days of Cover"):
+        _ci = FINAL_COLS.index(_col_name)
+        reqs.append({"repeatCell": {
+            "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": n_data+1,
+                       "startColumnIndex": _ci, "endColumnIndex": _ci+1},
+            "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "#,##0"}}},
+            "fields": "userEnteredFormat.numberFormat"
+        }})
+    # DRR — 1 decimal
+    _drr_ci = FINAL_COLS.index("DRR")
     reqs.append({"repeatCell": {
         "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": n_data+1,
-                   "startColumnIndex": doc_ci, "endColumnIndex": doc_ci+1},
-        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}},
+                   "startColumnIndex": _drr_ci, "endColumnIndex": _drr_ci+1},
+        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "#,##0.0"}}},
         "fields": "userEnteredFormat.numberFormat"
     }})
+    # Revenue — integer, comma thousands
     reqs.append({"repeatCell": {
         "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": n_data+1,
                    "startColumnIndex": rev_ci, "endColumnIndex": rev_ci+1},
-        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "#,##0.00"}}},
+        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "#,##0"}}},
         "fields": "userEnteredFormat.numberFormat"
     }})
+    # Revenue Contribution %
     reqs.append({"repeatCell": {
         "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": n_data+1,
                    "startColumnIndex": pct_ci, "endColumnIndex": pct_ci+1},
-        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0.00\"%\""}}},
+        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0.0\"%\""}}},
         "fields": "userEnteredFormat.numberFormat"
     }})
 
