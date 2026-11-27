@@ -358,7 +358,7 @@ def build_rows(qty_map, stock_map, rev_map, qty_90d_map=None):
             sold_90d = int(round(sold_mtd / MTD_DAYS * 90)) if MTD_DAYS else sold_mtd
         stock      = stock_map.get(sku, 0)
         _drr_raw   = sold_90d / 90 if sold_90d else 0
-        drr        = int(round(_drr_raw))               # whole number in sheet
+        drr        = int(round(_drr_raw))
         proj       = int(round(_drr_raw * 60)) if _drr_raw else 0
         doc        = int(round(stock / _drr_raw)) if _drr_raw else None
         ss         = stock_status(doc)
@@ -500,12 +500,12 @@ def write_tab(tab_name, qty_map, stock_map, rev_map, qty_90d_map=None):
             "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "#,##0"}}},
             "fields": "userEnteredFormat.numberFormat"
         }})
-    # DRR — 1 decimal
+    # DRR — integer, comma thousands
     _drr_ci = FINAL_COLS.index("DRR")
     reqs.append({"repeatCell": {
         "range": {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": _FULL,
                    "startColumnIndex": _drr_ci, "endColumnIndex": _drr_ci+1},
-        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "#,##0.0"}}},
+        "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "#,##0"}}},
         "fields": "userEnteredFormat.numberFormat"
     }})
     # Revenue — integer, comma thousands
