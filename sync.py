@@ -289,6 +289,11 @@ def build_rows(qty_map, stock_map, rev_map):
             pct,
             p,
         ])
+
+    # Sort by Revenue Contribution % descending (highest revenue SKUs on top)
+    pct_i = FINAL_COLS.index("Revenue Contribution %")
+    rows.sort(key=lambda r: -(r[pct_i] if isinstance(r[pct_i], (int, float)) else 0))
+
     return rows, total_rev
 
 # ── 5. Write to destination ───────────────────────────────────────────────────
